@@ -1,0 +1,161 @@
+#include <SPI.h>          //bibliotheek SPI interface
+#include <MFRC522.h>      //bibliotheek rfid lezer
+#include <nRF24L01.h>       //bibliotheek transmitter
+#include <RF24.h>           //bibliotheek transmitter
+
+#define SS_PIN 8
+#define RST_PIN 5
+MFRC522 mfrc522(SS_PIN, RST_PIN);   // Create MFRC522 instance.
+RF24 radio(9, 10);                   // CE Cip Enable, CSN Chip Select Not
+const byte address[6] = "00001";     //byte adres
+
+const int switchReed = 7;           //reed contact zit op pin 7
+const int RELAY_PIN = 6;            //relay zit op pin 6
+const int buttonPin = A0;
+int ledRood = 3;
+int ledGroen = 2;
+int buttonState = 0;
+int deurOpen = 0;
+
+bool deurState = false;            //status alarm false
+
+void setup() {
+
+  pinMode(10, OUTPUT);
+
+  pinMode(switchReed, INPUT);
+  pinMode(buttonPin, INPUT);
+  pinMode(RELAY_PIN, OUTPUT);
+  pinMode(ledRood, OUTPUT);
+  pinMode(ledGroen, OUTPUT);
+  Serial.begin(9600);                // Initiate a serial communication
+  radio.begin();                     //Start draadloze communicatie
+  radio.openWritingPipe(address);
+  radio.setPALevel(RF24_PA_MIN);     //transmitter sterkte Minimum
+  radio.stopListening();             //Zet de nRF24L01 als transmitter
+  SPI.begin();                       // Initiate  SPI bus
+  mfrc522.PCD_Init();                // Initiate MFRC522
+  Serial.println("Hou de kaart tegen de lezer...");
+  Serial.println();
+
+}
+void loop() {                     // Look for new cards
+  buttonState = digitalRead(buttonPin);
+  digitalWrite(ledRood, HIGH);
+  digitalWrite(ledGroen, LOW);
+  radio.begin();
+  if (radio.available()) {
+    digitalRead(switchReed);
+    if (digitalRead(switchReed) == LOW) {
+      //digitalWrite(SS_PIN, LOW);
+      deurState = true;
+      Serial.println("deur open");
+      if (deurState = true) {
+        const char text[] = "Bewegingssensor is HIGH";    //text is gelijk aan bewegingssensor is HIGH
+        radio.write(&text, sizeof(text));                 //verzend het bericht naar de receiver
+        Serial.println("signaal verzonden");              //print op de seriele monitor signaal verzonden
+        Serial.println("deur geopend zonder keys");
+        radio.write(&deurState, sizeof(deurState));
+        delay(1000);
+      }
+    }
+
+  }
+
+  if (buttonState == HIGH) {
+    Serial.println();
+    Serial.println("deur open van binnen");
+    digitalWrite(ledRood, LOW);
+    digitalWrite(ledGroen, HIGH);
+    Serial.println("Toegang");
+    digitalWrite(RELAY_PIN, HIGH);    //maakt de deur open
+    Serial.println("Deur open");
+    digitalRead(switchReed);
+    delay(100);
+    while (digitalRead(switchReed) != LOW); {
+      digitalWrite(ledGroen, HIGH);
+    }
+
+    if (digitalRead(switchReed) == LOW) {
+      Serial.println("Controleer de deur");
+      delay(500);
+    }
+
+    Serial.println("Deur geopend");
+    delay(1000);
+    digitalWrite(RELAY_PIN, LOW);       //deurslot dicht
+    while (digitalRead(switchReed) != HIGH); {
+
+    }
+    Serial.println();
+    Serial.println("Deur gesloten");
+    delay(500);
+  }
+
+  if ( ! mfrc522.PICC_IsNewCardPresent()) {
+    return;
+  }
+  // Select one of the cards
+  if ( ! mfrc522.PICC_ReadCardSerial()) {
+    return;
+  }
+
+  Serial.print("UID tag :");  //Show UID on serial monitor
+  String content = "";
+  byte letter;
+  for (byte i = 0; i < mfrc522.uid.size; i++) {
+    Serial.print(mfrc522.uid.uidByte[i] < 0x10 ? " 0" : " ");
+    Serial.print(mfrc522.uid.uidByte[i], HEX);
+    content.concat(String(mfrc522.uid.uidByte[i] < 0x10 ? " 0" : " "));
+    content.concat(String(mfrc522.uid.uidByte[i], HEX));
+  }
+  digitalWrite(ledRood, LOW);
+  Serial.println();
+  Serial.print("Message : ");
+  content.toUpperCase();
+
+  if (content.substring(1) == "AA AC 12 BE") {                //change here the UID of the card/cards that you want to give access
+    digitalWrite(ledGroen, HIGH);
+    Serial.println("Toegang");
+    digitalWrite(RELAY_PIN, HIGH);    //maakt de deur open
+    Serial.println("Deur open");
+    digitalRead(switchReed);
+    delay(100);
+    while (digitalRead(switchReed) != LOW); {
+      digitalWrite(ledGroen, HIGH);
+    }
+
+    Serial.println("Deur geopend");
+    delay(1000);
+    digitalWrite(RELAY_PIN, LOW);       //deurslot dicht
+    while (digitalRead(switchReed) != HIGH); {
+
+    }
+    Serial.println();
+    Serial.println("Deur gesloten");
+    delay(500);
+
+  } else {
+    Serial.println(" Geen Toegang");
+    Serial.println();
+    Serial.println("Probeer opnieuw");
+    digitalWrite(ledRood, LOW);
+    delay(100);
+    digitalWrite(ledRood, HIGH);
+    delay(100);
+    digitalWrite(ledRood, LOW);
+    delay(100);
+    digitalWrite(ledRood, HIGH);
+    delay(100);
+    digitalWrite(ledRood, LOW);
+    delay(100);
+    digitalWrite(ledRood, HIGH);
+    delay(3000);
+    deurState = true;
+    if (deurState = true) {
+      Serial.println("verkeerde key");
+      radio.write(&deurState, sizeof(deurState));
+      delay(1000);
+    }
+  }
+}
